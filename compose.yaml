@@ -1,0 +1,102 @@
+# 仅用于本机 HTTP 开发；生产需单独配置 HTTPS、NODE_ENV=production 和 Secure Cookie。
+# 启动：npm run up；停止保留数据：npm run down；查看日志：npm run logs。
+name: campus-auth
+# YAML 锚点复用同一份后端构建/环境配置，避免迁移服务与应用连接到不同数据库。
+x-api: &api
+  image: campus-auth-api:0.1.0
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+  environment:
+    NODE_ENV: development
+    HOST: 0.0.0.0
+    PORT: 3000
+    WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
+    CSRF_SECRET: ${CSRF_SECRET:?Set CSRF_SECRET in .env}
+    SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-604800}
+    # 容器内通过服务名 db 连接；不是宿主机的 localhost。秘密从 .env 注入。
+    PGHOST: db
+    PGPORT: 5432
+    PGDATABASE: campus
+    PGUSER: campus_app
+    PGPASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in .env}
+  networks: [data, entrance]
+  # API 不依赖本地可写层；仅 /tmp 临时可写，用户与会话都在 PostgreSQL。
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  mem_limit: 512m
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+services:
+  db:
+    image: postgres:17.10-bookworm
+    environment:
+      POSTGRES_USER: campus_owner
+      POSTGRES_DB: campus
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in .env}
+    # 命名卷保留数据库；down 默认不删卷。禁止用 down -v 当作日常更新命令。
+    # 初始化脚本仅在空卷首次启动执行，修改 .env 不会重设已有数据库的密码。
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-app-user.sh:/docker-entrypoint-initdb.d/10-app-user.sh:ro
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U campus_owner -d campus"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  # 迁移独立执行且必须成功；应用启动不使用 db push，不重置任何表。
+  migrate:
+    <<: *api
+    command: [npm, run, db:migrate]
+    depends_on:
+      db: {condition: service_healthy}
+    restart: "no"
+  api:
+    <<: *api
+    depends_on:
+      db: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+  web:
+    image: campus-auth-web:0.1.0
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    # 只绑定本机，避免将开发账号系统公开；手机实机测试需另行设计受控访问。
+    ports: ["127.0.0.1:${WEB_PORT:-5173}:8080"]
+    networks: [entrance]
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+# Nginx只连接入口网，数据库只连接内部数据网；默认不发布数据库/API宿主端口。
+networks:
+  data: {internal: true}
+  entrance: {}
+volumes:
+  postgres_data: {}

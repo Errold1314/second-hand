@@ -1,0 +1,6 @@
+# 可选原生后端开发覆盖文件：仅将数据库端口发布到本机回环地址。
+# docker compose -f compose.yaml -f compose.dev.yaml up -d db
+# 不要将127.0.0.1改成0.0.0.0；改端口时同步修改后端.env的DATABASE_URL。
+services:
+  db:
+    ports: ["127.0.0.1:5432:5432"]

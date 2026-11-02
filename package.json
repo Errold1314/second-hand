@@ -1,0 +1,15 @@
+{
+  "name": "campus-secondhand", "version": "0.1.0", "private": true, "type": "module",
+  "workspaces": ["apps/*"],
+  "engines": {"node": "^24.11.0", "npm": ">=11"},
+  "scripts": {
+    "setup:env": "node scripts/init-env.ts",
+    "dev:api": "npm run dev -w @campus/api", "dev:web": "npm run dev -w @campus/web",
+    "preview:live": "npm run dev -w @campus/web -- --host 127.0.0.1 --port 5175",
+    "db:generate": "npm run db:generate -w @campus/api", "db:migrate": "npm run db:migrate -w @campus/api",
+    "typecheck": "npm run typecheck --workspaces", "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces", "test:integration": "npm run test:integration -w @campus/api",
+    "test:integration:docker": "docker compose run --rm --no-deps api node --import tsx scripts/integration-container.ts",
+    "up": "docker compose up -d --build", "down": "docker compose down", "logs": "docker compose logs -f --tail=100"
+  }
+}

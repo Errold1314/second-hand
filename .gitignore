@@ -1,0 +1,26 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+apps/api/generated/
+.playwright/
+
+# 本机工具配置、权限和设计检查产物，不随源码上传。
+.mcp.json
+.claude/settings.local.json
+.taste-skill/
+
+# 私钥、证书和本地数据库备份；Prisma 的 SQL 迁移仍需提交。
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+*.tar
+*.tar.gz
